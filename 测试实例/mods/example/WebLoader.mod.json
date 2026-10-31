@@ -1,0 +1,16 @@
+{
+  "id": "example",
+  "name": "示例 Mod",
+  "version": "1.0.0",
+  "author": "WebLoader",
+  "description": "启用后会在页面右下角显示一个 WebLoader 标记。",
+  "entry": "index.js",
+  "matches": [
+    "https://*.bilibili.com/*"
+  ],
+  "excludeMatches": [],
+  "runAt": "document-end",
+  "world": "page",
+  "priority": 0,
+  "enabled": true
+}

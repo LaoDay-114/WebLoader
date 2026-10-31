@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "site": {
+    "url": "https://www.bilibili.com/",
+    "name": "bilibili.com"
+  },
+  "window": {
+    "width": 1440,
+    "height": 900,
+    "minWidth": 800,
+    "minHeight": 600,
+    "resizable": true
+  },
+  "devTools": false,
+  "mods": {
+    "watch": true,
+    "disabled": []
+  }
+}

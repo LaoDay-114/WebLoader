@@ -1,0 +1,21 @@
+{
+  "name": "webloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Node.js webpage mod loader powered by Electron.",
+  "main": "src/main.js",
+  "bin": {
+    "WebLoader": "bin/webloader.js"
+  },
+  "scripts": {
+    "start": "node bin/webloader.js start",
+    "test": "node --test test",
+    "check": "node scripts/check.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "electron": "^45.2.1"
+  }
+}
