@@ -12,7 +12,7 @@ WebLoader, a fast and modern dynamic web injector.
 
 推荐在本仓库的 Releases 中下载 WebLoader-x.x.x-with-dep.zip , 不然你就要自己配置一份了。
 
-> [!WARNNING]
+> [!WARNING]
 > Releases 中发布的 zip 中附带的依赖仅支持 x64-Windows 如果是其他平台，需要 clone 一份源码安装依赖！
 
 #### 小贴士
