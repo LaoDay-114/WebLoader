@@ -1,0 +1,14 @@
+{
+  "id": "WebLoaderManager",
+  "name": "WebLoader Manager",
+  "version": "1.1.0",
+  "author": "WebLoader",
+  "description": "WebLoader 内置 Mod 管理器。第一次运行时显示欢迎界面，之后可以查看并启用或禁用 Mod。",
+  "entry": "index.js",
+  "matches": [],
+  "excludeMatches": [],
+  "runAt": "document-end",
+  "world": "page",
+  "priority": 1000,
+  "enabled": true
+}

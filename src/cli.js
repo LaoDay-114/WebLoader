@@ -7,6 +7,8 @@ const packageJson = require('../package.json');
 const { CONFIG_FILENAME, getConfigPath, loadConfig } = require('./config');
 const { installSite } = require('./install');
 const { discoverMods } = require('./mods');
+const { setModEnabled } = require('./mod-state');
+const { createMod } = require('./scaffold');
 
 const useColor = Boolean(process.stdout.isTTY) && !('NO_COLOR' in process.env);
 const color = {
@@ -26,6 +28,9 @@ ${color.bold('用法：')}
   WebLoader install <网站地址> [--force] [--name <名称>]
   WebLoader start [--devtools]
   WebLoader list
+  WebLoader create <Mod名字> [--id <ID>]
+  WebLoader enable <Mod>
+  WebLoader disable <Mod>
   WebLoader docs
   WebLoader help
   WebLoader version
@@ -34,6 +39,9 @@ ${color.bold('命令：')}
   install   在当前目录创建 ${CONFIG_FILENAME} 和 mods/ 目录
   start     启动当前目录配置的网站，并自动注入已启用的 Mod
   list      列出当前目录中的 Mod
+  create    创建一个 Mod 开发模板
+  enable    启用指定 Mod
+  disable   禁用指定 Mod
   docs      在终端查看 WebLoader Mod 开发教程
   help      显示帮助
   version   显示版本
@@ -41,6 +49,9 @@ ${color.bold('命令：')}
 ${color.bold('示例：')}
   WebLoader install https://www.bilibili.com/
   WebLoader start
+  WebLoader create 我的第一个Mod
+  WebLoader disable example-mod
+  WebLoader enable example-mod
   WebLoader docs
 
 ${color.bold('Mod 结构：')}
@@ -51,6 +62,7 @@ ${color.bold('可用选项：')}
   --force      覆盖已存在的 ${CONFIG_FILENAME}
   --name       设置网站显示名称
   --devtools   启动时打开开发者工具
+  --id         指定 WebLoader create 生成的 Mod ID
 `.trim());
 }
 
@@ -78,6 +90,7 @@ function parseArgs(argv) {
     help: false,
     version: false,
     name: undefined,
+    id: undefined,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -100,6 +113,15 @@ function parseArgs(argv) {
       index += 1;
     } else if (arg.startsWith('--name=')) {
       flags.name = arg.slice('--name='.length);
+    } else if (arg === '--id') {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('--id 需要一个 Mod ID 参数。');
+      }
+      flags.id = value;
+      index += 1;
+    } else if (arg.startsWith('--id=')) {
+      flags.id = arg.slice('--id='.length);
     } else if (arg.startsWith('-')) {
       throw new Error(`未知选项：${arg}`);
     } else {
@@ -115,8 +137,11 @@ function printInstallResult(result) {
   console.log(`  网站    ${result.config.site.url}`);
   console.log(`  配置    ${result.configPath}`);
   console.log(`  Mods    ${result.modsDir}`);
+  console.log(`  内置    WebLoaderManager（Mod 管理器，第一次启动时显示欢迎界面）`);
+  console.log(`          PageToolkit（页面工具箱，默认关闭，可在 WebLoaderManager 中开启）`);
   console.log('');
-  console.log(`下一步：在 mods/ 中放入 Mod，然后运行 ${color.cyan('WebLoader start')}`);
+  console.log(`下一步：在 mods/ 中放入 Mod，或运行 ${color.cyan('WebLoader create <Mod名字>')} 创建模板`);
+  console.log(`然后运行 ${color.cyan('WebLoader start')}`);
   console.log(
     '如果你是 WebLoader Mod 开发者或是对 Mod 开发有兴趣，使用 WebLoader docs 来查看教程。',
   );
@@ -133,6 +158,54 @@ function runInstall(projectDir, positionals, flags) {
   });
 
   printInstallResult(result);
+}
+
+function runCreate(projectDir, positionals, flags) {
+  if (positionals.length !== 1) {
+    throw new Error('用法：WebLoader create <Mod名字> [--id <ID>]');
+  }
+
+  const result = createMod(projectDir, positionals[0], {
+    id: flags.id,
+  });
+
+  console.log(`${color.green('已创建 Mod')} ${color.bold(result.id)}`);
+  console.log(`  名称    ${result.name}`);
+  console.log(`  目录    ${result.dir}`);
+  console.log(`  配置    ${result.manifestPath}`);
+  console.log(`  入口    ${result.entryPath}`);
+  console.log('');
+  console.log('下一步：编辑入口脚本，然后运行 WebLoader start');
+  console.log('完整 API 与开发说明：WebLoader docs');
+}
+
+function runSetEnabled(projectDir, positionals, enabled) {
+  const command = enabled ? 'enable' : 'disable';
+  if (positionals.length !== 1) {
+    throw new Error(`用法：WebLoader ${command} <Mod>`);
+  }
+
+  const result = setModEnabled(projectDir, positionals[0], enabled);
+  const mod = result.mod;
+
+  if (!result.changed) {
+    console.log(
+      `${color.dim('[无变化]')} ${color.bold(mod.id)} 已经是${enabled ? '启用' : '禁用'}状态。`,
+    );
+    return;
+  }
+
+  console.log(
+    `${color.green(enabled ? '已启用' : '已禁用')} ${color.bold(mod.id)} ${mod.name}`,
+  );
+  if (result.manifestWarning) {
+    console.log(
+      color.yellow(
+        `提示：无法更新 Mod 配置中的 enabled 字段（${result.manifestWarning}），已通过加载器配置生效。`,
+      ),
+    );
+  }
+  console.log('如果 WebLoader 正在运行且启用了热重载，页面会自动刷新。');
 }
 
 function printMods(projectDir) {
@@ -152,8 +225,9 @@ function printMods(projectDir) {
 
     for (const mod of mods) {
       const status = mod.enabled ? color.green('[启用]') : color.dim('[禁用]');
+      const builtin = mod.builtin ? ` ${color.cyan('[内置]')}` : '';
       console.log(
-        `  ${status} ${color.bold(mod.id)} ${mod.version} by ${mod.author}`,
+        `  ${status} ${color.bold(mod.id)} ${mod.version} by ${mod.author}${builtin}`,
       );
       console.log(
         `         ${mod.world} / ${mod.runAt}${mod.description ? ` - ${mod.description}` : ''}`,
@@ -268,6 +342,21 @@ async function runCli(argv, options = {}) {
         throw new Error('用法：WebLoader list');
       }
       printMods(projectDir);
+      return;
+    }
+
+    if (command === 'create') {
+      runCreate(projectDir, commandArgs, parsed.flags);
+      return;
+    }
+
+    if (command === 'enable') {
+      runSetEnabled(projectDir, commandArgs, true);
+      return;
+    }
+
+    if (command === 'disable') {
+      runSetEnabled(projectDir, commandArgs, false);
       return;
     }
 

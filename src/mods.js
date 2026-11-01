@@ -6,6 +6,7 @@ const {
   siteUrlToMatchPattern,
   validatePatterns,
 } = require('./matcher');
+const { getBuiltinMod } = require('./builtin-mods');
 
 const MANIFEST_FILENAME = 'WebLoader.mod.json';
 const RUN_AT_VALUES = new Set(['document-start', 'document-end', 'document-idle']);
@@ -189,7 +190,13 @@ function discoverMods(projectDir, config) {
 
       mod.matches = matches.length > 0 ? matches : [defaultMatch];
       mod.excludeMatches = excludeMatches;
-      mod.enabled = mod.enabled && !disabledIds.has(mod.id) && !disabledIds.has(mod.dirName);
+
+      const builtinMod = getBuiltinMod(mod.id, mod.dirName);
+      mod.builtin = Boolean(builtinMod);
+      mod.protected = Boolean(builtinMod && builtinMod.protected);
+      mod.enabled =
+        mod.protected ||
+        (mod.enabled && !disabledIds.has(mod.id) && !disabledIds.has(mod.dirName));
       mod.metadata = {
         id: mod.id,
         name: mod.name,
@@ -200,6 +207,8 @@ function discoverMods(projectDir, config) {
         runAt: mod.runAt,
         world: mod.world,
         priority: mod.priority,
+        builtin: mod.builtin,
+        protected: mod.protected,
         matches: mod.matches,
         excludeMatches: mod.excludeMatches,
       };
@@ -220,9 +229,51 @@ function discoverMods(projectDir, config) {
   return { modsDir, mods, errors };
 }
 
+function isValidModId(value) {
+  return typeof value === 'string' && ID_PATTERN.test(value);
+}
+
+function validateModId(value) {
+  const id = typeof value === 'string' ? value.trim() : '';
+  if (!isValidModId(id)) {
+    throw new Error(
+      `无效的 Mod ID：${id || '(空)'}。只能使用字母、数字、点、下划线和短横线，且必须以字母或数字开头，最长 64 字符。`,
+    );
+  }
+  return id;
+}
+
+function toPublicMod(mod) {
+  return {
+    id: mod.id,
+    dirName: mod.dirName,
+    name: mod.name,
+    version: mod.version,
+    author: mod.author,
+    description: mod.description,
+    entry: mod.entry,
+    runAt: mod.runAt,
+    world: mod.world,
+    priority: mod.priority,
+    enabled: Boolean(mod.enabled),
+    builtin: Boolean(mod.builtin),
+    protected: Boolean(mod.protected),
+    matches: [...mod.matches],
+    excludeMatches: [...mod.excludeMatches],
+  };
+}
+
+function toPublicMods(mods) {
+  return mods.map(toPublicMod);
+}
+
 module.exports = {
   MANIFEST_FILENAME,
   RUN_AT_VALUES,
   WORLD_VALUES,
   discoverMods,
+  isValidModId,
+  toPublicMod,
+  toPublicMods,
+  validateModId,
 };

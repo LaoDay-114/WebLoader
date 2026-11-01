@@ -14,8 +14,10 @@ const {
   shell,
 } = require('electron');
 const packageJson = require('../package.json');
-const { getConfigPath, loadConfig } = require('./config');
-const { discoverMods } = require('./mods');
+const { CONFIG_FILENAME, getConfigPath, loadConfig, writeConfig } = require('./config');
+const { discoverMods, toPublicMods } = require('./mods');
+const { installBuiltinMods, removeProtectedBuiltinFromDisabled } = require('./builtin-mods');
+const { setModEnabled } = require('./mod-state');
 
 app.setName('WebLoader');
 
@@ -25,7 +27,9 @@ let modsState = { mods: [], errors: [], modsDir: '' };
 let bridgeName = '';
 let mainWindow = null;
 let watcher = null;
+let configWatcher = null;
 let reloadTimer = null;
+let reloadNeedsConfig = false;
 let storageDir = '';
 
 function resolveProjectDir() {
@@ -280,6 +284,34 @@ function buildApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function scheduleReload(message, needsConfig) {
+  if (needsConfig) {
+    reloadNeedsConfig = true;
+  }
+
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(() => {
+    const shouldReloadConfig = reloadNeedsConfig;
+    reloadNeedsConfig = false;
+
+    if (shouldReloadConfig) {
+      try {
+        config = loadConfig(projectDir);
+      } catch (error) {
+        console.warn(`[WebLoader] 重新读取加载器配置失败：${error.message}`);
+      }
+    }
+
+    refreshMods();
+    console.log(message);
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.reload();
+      }
+    }
+  }, 350);
+}
+
 function setupModWatcher() {
   if (!config.mods.watch) {
     return;
@@ -293,17 +325,7 @@ function setupModWatcher() {
         if (filename && String(filename).endsWith('.tmp')) {
           return;
         }
-
-        clearTimeout(reloadTimer);
-        reloadTimer = setTimeout(() => {
-          refreshMods();
-          console.log('[WebLoader] Mod 文件已变化，正在重新加载页面...');
-          for (const win of BrowserWindow.getAllWindows()) {
-            if (!win.isDestroyed()) {
-              win.webContents.reload();
-            }
-          }
-        }, 350);
+        scheduleReload('[WebLoader] Mod 文件已变化，正在重新加载页面...', false);
       },
     );
 
@@ -312,6 +334,22 @@ function setupModWatcher() {
     });
   } catch (error) {
     console.warn(`[WebLoader] 无法监视 Mod 目录：${error.message}`);
+  }
+
+  try {
+    configWatcher = fs.watch(projectDir, (eventType, filename) => {
+      const name = String(filename || '');
+      if (name && name !== CONFIG_FILENAME) {
+        return;
+      }
+      scheduleReload('[WebLoader] 加载器配置已变化，正在重新加载页面...', true);
+    });
+
+    configWatcher.on('error', (error) => {
+      console.warn(`[WebLoader] 加载器配置监视失败：${error.message}`);
+    });
+  } catch (error) {
+    console.warn(`[WebLoader] 无法监视加载器配置：${error.message}`);
   }
 }
 
@@ -346,8 +384,24 @@ async function start() {
       .replace(/\sWebLoader\/[^\s]+/g, '');
 
   fs.mkdirSync(path.join(projectDir, 'mods'), { recursive: true });
+  try {
+    installBuiltinMods(projectDir);
+  } catch (error) {
+    console.warn(`[WebLoader] 无法安装内置 Mod：${error.message}`);
+  }
+
   storageDir = path.join(projectDir, '.webloader', 'storage');
   fs.mkdirSync(storageDir, { recursive: true });
+
+  const cleanedConfig = removeProtectedBuiltinFromDisabled(config);
+  if (cleanedConfig !== config) {
+    config = cleanedConfig;
+    try {
+      writeConfig(projectDir, config);
+    } catch (error) {
+      console.warn(`[WebLoader] 无法清理内置 Mod 的禁用状态：${error.message}`);
+    }
+  }
 
   bridgeName = `__webloaderBridge_${crypto.randomBytes(8).toString('hex')}`;
 
@@ -373,6 +427,48 @@ async function start() {
     const output =
       level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
     output(`${prefix} ${String(message)}`);
+  });
+
+  ipcMain.on('webloader:get-mods', (event) => {
+    try {
+      event.returnValue = {
+        ok: true,
+        data: toPublicMods(modsState.mods),
+      };
+    } catch (error) {
+      event.returnValue = {
+        ok: false,
+        error: error.message,
+      };
+    }
+  });
+
+  ipcMain.on('webloader:set-mod-enabled', (event, modId, enabled) => {
+    try {
+      const id = typeof modId === 'string' ? modId : '';
+      if (!id || typeof enabled !== 'boolean') {
+        throw new Error('参数无效：需要 Mod ID 和布尔值。');
+      }
+
+      const result = setModEnabled(projectDir, id, enabled);
+      config = result.config;
+      modsState = result.state;
+
+      console.log(
+        `[WebLoader] ${enabled ? '已启用' : '已禁用'} Mod：${result.mod.id}`,
+      );
+
+      event.returnValue = {
+        ok: true,
+        data: toPublicMods(modsState.mods),
+        changed: result.changed,
+      };
+    } catch (error) {
+      event.returnValue = {
+        ok: false,
+        error: error.message,
+      };
+    }
   });
 
   app.on('web-contents-created', (event, contents) => {
@@ -414,5 +510,9 @@ app.on('will-quit', () => {
   if (watcher) {
     watcher.close();
     watcher = null;
+  }
+  if (configWatcher) {
+    configWatcher.close();
+    configWatcher = null;
   }
 });

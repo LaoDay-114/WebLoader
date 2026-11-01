@@ -91,6 +91,23 @@ function createWebLoaderApi(bridge, info, loaderVersion) {
     }
   }
 
+  function getMods() {
+    try {
+      const mods = bridge.getMods();
+      return Array.isArray(mods) ? mods : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function setModEnabled(id, enabled) {
+    try {
+      return bridge.setModEnabled(String(id), enabled === true) === true;
+    } catch {
+      return false;
+    }
+  }
+
   function addStyle(cssText, key) {
     const style = document.createElement('style');
     style.setAttribute('data-webloader-mod', info.id);
@@ -222,6 +239,8 @@ function createWebLoaderApi(bridge, info, loaderVersion) {
     onReady,
     waitFor,
     reload: () => window.location.reload(),
+    getMods,
+    setModEnabled,
     storage: {
       get: getStorageValue,
       set: setStorageValue,
@@ -307,6 +326,36 @@ function runPreload() {
         return getStorage(modId).clear();
       } catch (error) {
         console.error(`[WebLoader:${modId}] 清空存储失败：${error.message}`);
+        return false;
+      }
+    },
+    getMods() {
+      try {
+        const response = ipcRenderer.sendSync('webloader:get-mods');
+        if (!response || !response.ok) {
+          console.error('[WebLoader] 获取 Mod 列表失败：', response && response.error);
+          return [];
+        }
+        return Array.isArray(response.data) ? response.data : [];
+      } catch (error) {
+        console.error('[WebLoader] 获取 Mod 列表失败：', error);
+        return [];
+      }
+    },
+    setModEnabled(modId, enabled) {
+      try {
+        const response = ipcRenderer.sendSync(
+          'webloader:set-mod-enabled',
+          String(modId),
+          enabled === true,
+        );
+        if (!response || !response.ok) {
+          console.error('[WebLoader] 修改 Mod 状态失败：', response && response.error);
+          return false;
+        }
+        return true;
+      } catch (error) {
+        console.error('[WebLoader] 修改 Mod 状态失败：', error);
         return false;
       }
     },

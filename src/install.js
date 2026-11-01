@@ -8,6 +8,7 @@ const {
   normalizeSiteUrl,
   writeConfig,
 } = require('./config');
+const { installBuiltinMods } = require('./builtin-mods');
 
 function installSite(projectDir, siteUrl, options = {}) {
   const configPath = getConfigPath(projectDir);
@@ -27,11 +28,13 @@ function installSite(projectDir, siteUrl, options = {}) {
   fs.mkdirSync(projectDir, { recursive: true });
   fs.mkdirSync(modsDir, { recursive: true });
   writeConfig(projectDir, config);
+  const builtin = installBuiltinMods(projectDir);
 
   return {
     config,
     configPath,
     modsDir,
+    builtinMods: builtin.installed,
   };
 }
 

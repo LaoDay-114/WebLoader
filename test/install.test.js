@@ -22,6 +22,18 @@ test('installs a config and mods directory', (t) => {
   assert.equal(fs.existsSync(result.configPath), true);
   assert.equal(path.basename(result.configPath), CONFIG_FILENAME);
   assert.equal(fs.statSync(result.modsDir).isDirectory(), true);
+  assert.equal(result.builtinMods.length, 2);
+  assert.equal(
+    fs.existsSync(path.join(result.modsDir, 'WebLoaderManager', 'WebLoader.mod.json')),
+    true,
+  );
+  const pageToolkitManifest = JSON.parse(
+    fs.readFileSync(
+      path.join(result.modsDir, 'PageToolkit', 'WebLoader.mod.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(pageToolkitManifest.enabled, false);
 
   const loaded = loadConfig(dir);
   assert.equal(loaded.site.url, 'https://www.bilibili.com/');

@@ -145,7 +145,17 @@ function loadConfig(projectDir) {
 function writeConfig(projectDir, config) {
   const configPath = getConfigPath(projectDir);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  const temporaryPath = `${configPath}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  try {
+    fs.renameSync(temporaryPath, configPath);
+  } catch (error) {
+    if (error.code !== 'EEXIST' && error.code !== 'EPERM') {
+      throw error;
+    }
+    fs.rmSync(configPath, { force: true });
+    fs.renameSync(temporaryPath, configPath);
+  }
   return configPath;
 }
 

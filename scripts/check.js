@@ -8,17 +8,30 @@ const root = path.resolve(__dirname, '..');
 const directories = ['bin', 'src', 'scripts', 'test'];
 const files = [];
 
-for (const directory of directories) {
-  const absolute = path.join(root, directory);
-  if (!fs.existsSync(absolute)) {
-    continue;
+function collect(directory) {
+  if (!fs.existsSync(directory)) {
+    return;
   }
 
-  for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith('.js')) {
-      files.push(path.join(absolute, entry.name));
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.git') {
+      continue;
+    }
+
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collect(absolute);
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith('.js') || entry.name.endsWith('.json'))
+    ) {
+      files.push(absolute);
     }
   }
+}
+
+for (const directory of directories) {
+  collect(path.join(root, directory));
 }
 
 files.push(path.join(root, 'package.json'));

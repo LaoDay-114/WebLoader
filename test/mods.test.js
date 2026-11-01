@@ -6,7 +6,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createDefaultConfig } = require('../src/config');
-const { discoverMods, MANIFEST_FILENAME } = require('../src/mods');
+const {
+  discoverMods,
+  MANIFEST_FILENAME,
+  toPublicMods,
+} = require('../src/mods');
 
 function makeProject(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'webloader-mods-'));
@@ -157,4 +161,53 @@ test('reports a missing mods directory', (t) => {
   const result = discoverMods(dir, config);
   assert.equal(result.mods.length, 0);
   assert.match(result.errors[0].message, /mods 目录不存在/);
+});
+
+test('marks built-in mods and force-enables only protected built-ins', (t) => {
+  const { dir, config } = makeProject(t);
+  config.mods.disabled = ['WebLoaderManager', 'PageToolkit', 'regular'];
+  writeMod(dir, 'WebLoaderManager', {
+    id: 'WebLoaderManager',
+    name: 'Manager',
+    entry: 'index.js',
+    enabled: false,
+  });
+  writeMod(dir, 'PageToolkit', {
+    id: 'page-toolkit',
+    name: 'Page Toolkit',
+    entry: 'index.js',
+    enabled: false,
+  });
+  writeMod(dir, 'regular', {
+    id: 'regular',
+    name: 'Regular',
+    entry: 'index.js',
+  });
+
+  const result = discoverMods(dir, config);
+  const manager = result.mods.find((mod) => mod.id === 'WebLoaderManager');
+  const pageToolkit = result.mods.find((mod) => mod.id === 'page-toolkit');
+  const regular = result.mods.find((mod) => mod.id === 'regular');
+
+  assert.equal(manager.builtin, true);
+  assert.equal(manager.protected, true);
+  assert.equal(manager.enabled, true);
+  assert.equal(manager.metadata.builtin, true);
+  assert.equal(manager.metadata.protected, true);
+
+  assert.equal(pageToolkit.builtin, true);
+  assert.equal(pageToolkit.protected, false);
+  assert.equal(pageToolkit.enabled, false);
+
+  assert.equal(regular.builtin, false);
+  assert.equal(regular.protected, false);
+  assert.equal(regular.enabled, false);
+
+  const publicManager = toPublicMods(result.mods).find(
+    (mod) => mod.id === 'WebLoaderManager',
+  );
+  assert.equal(publicManager.builtin, true);
+  assert.equal(publicManager.protected, true);
+  assert.equal(publicManager.enabled, true);
+  assert.deepEqual(publicManager.matches, ['https://www.bilibili.com/*']);
 });

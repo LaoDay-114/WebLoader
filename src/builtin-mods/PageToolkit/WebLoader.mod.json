@@ -1,0 +1,14 @@
+{
+  "id": "page-toolkit",
+  "name": "Page Toolkit",
+  "version": "1.0.0",
+  "author": "Qwen",
+  "description": "页面工具箱：页面信息面板、深色模式切换、DOM统计、调试工具。(千问AI生成)",
+  "entry": "index.js",
+  "matches": [],
+  "excludeMatches": [],
+  "runAt": "document-end",
+  "world": "page",
+  "priority": 0,
+  "enabled": false
+}
